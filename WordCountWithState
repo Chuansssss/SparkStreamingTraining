@@ -1,0 +1,43 @@
+package com.jc.spark
+
+import org.apache.spark.SparkConf
+import org.apache.spark.streaming.{Seconds, StreamingContext}
+
+/**
+  * Author: JcShang
+  * 09/02/2018
+  */
+object WordCountWithState {
+  def main(args: Array[String]): Unit = {
+
+    val sparkConf = new SparkConf().setAppName("WordCountWithStae").setMaster("local[2]");
+    val ssc = new StreamingContext(sparkConf, Seconds(3));
+
+    // checkpoint must be set if we use stateful operand
+    // it is not hard to understand because we have to cache the previous data
+    // in production environment, it is better to set checkpoint into HDFS to guarantee the safety of data
+    ssc.checkpoint(".");
+    
+    val lines = ssc.socketTextStream("localhost", 6789); // return a DStream
+    val result = lines.flatMap(_.split(" ")).map((_, 1)); // reduce
+    val state = result.updateStateByKey[Int](updateFunction _);
+
+    state.print();
+
+    ssc.start();
+    ssc.awaitTermination()
+  }
+
+  /**
+    * update the previous data with the newly comming data
+    * @param currentValues
+    * @param preValues
+    * @return
+    */
+  def updateFunction(currentValues: Seq[Int], preValues: Option[Int]): Option[Int] = {
+    val current = currentValues.sum;
+    val pre = preValues.getOrElse(0);
+
+    Some(current + pre);
+  }
+}
