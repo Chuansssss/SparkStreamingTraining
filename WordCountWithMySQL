@@ -1,0 +1,59 @@
+package com.jc.spark
+
+import java.sql.DriverManager
+
+import org.apache.spark.SparkConf
+import org.apache.spark.streaming.{Seconds, StreamingContext}
+
+/**
+  * word count and write the result into MySQL
+  * Author: JcShang
+  * 09/02/2018
+  */
+object ForeachRDDApp {
+  def main(args: Array[String]): Unit = {
+
+    val sparkConf = new SparkConf().setAppName("WordCountWithStae").setMaster("local[2]");
+    val ssc = new StreamingContext(sparkConf, Seconds(3));
+
+    val lines = ssc.socketTextStream("localhost", 6789); // return a DStream
+    val result = lines.flatMap(_.split(" ")).map((_, 1)).reduceByKey(_ + _); // reduce
+
+
+    // TODO... write the result into MySQL
+//    result.foreachRDD(rdd => {
+//      val connection = createConnection();
+//      rdd.foreach{record =>
+//        val sql = "insert into wordcount(word, wordcount) values ('" + record._1 + "', " + record._2 + ")"
+//        connection.createStatement().execute(sql);
+//      }
+//    })
+    result.foreachRDD(rdd => {
+      rdd.foreachPartition(partition => {
+//        if (partition.size > 0) {
+          val connection = createConnection()
+
+          partition.foreach( record => {
+            // this doesn't update the existing data, rather, it insert a new row
+            val sql = "insert into wordcount(word, wordcount) values ('" + record._1 + "', " + record._2 + ")"
+            connection.createStatement().execute(sql);
+          })
+
+          connection.close()
+//        }
+      })
+    })
+
+    ssc.start();
+    ssc.awaitTermination()
+  }
+
+  /**
+    * create connections with MySQL
+    * @return
+    */
+  def createConnection() = {
+    Class.forName("com.mysql.jdbc.Driver");
+    DriverManager.getConnection("jdbc:mysql://localhost:3306/jc_spark", [username], [password]);
+  }
+}
